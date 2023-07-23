@@ -1,243 +1,157 @@
-const { Employee, Organizer } = require('../models/employeeModel');
+const Employee = require('../models/employeeModel');
 const Hackathon = require('../models/hackathonModel');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
+const { SECRET_KEY } = require('../config');
 
-// API to register a new employee
-const registerEmployee = async (req, res) => {
-  const { username, password, email, experienceLevel, technologyStack, businessUnit } = req.body;
+// Create a new employee
+exports.createEmployee = async (req, res) => {
   try {
-    const existingEmployee = await Employee.findOne({ email });
-    if (existingEmployee) {
-      return res.status(400).json({ message: 'Employee with this email already exists.' });
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const employee = await Employee.create({
-      username,
-      email,
-      password: hashedPassword,
-      experienceLevel,
-      technologyStack,
-      businessUnit,
-    });
-    const token = jwt.sign({ userId: employee._id, isOrganizer: false }, process.env.SECRET_KEY, { expiresIn: '1h' });
-    return res.status(201).json({ token });
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
+    const { name, email, password } = req.body;
+    const employee = new Employee({ name, email, password });
+    await employee.save();
+    res.status(201).json({ message: 'Employee created successfully!', employee });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create employee.', details: err.message });
   }
 };
 
-// API for employee login
-const loginEmployee = async (req, res) => {
-  const { email, password } = req.body;
+// Login an employee and generate a JWT token
+exports.login = async (req, res) => {
   try {
+    const { email, password } = req.body;
     const employee = await Employee.findOne({ email });
+
+    if (!employee || employee.password !== password) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ id: employee._id, email: employee.email }, SECRET_KEY, { expiresIn: '1h' });
+
+    res.status(200).json({ message: 'Login successful!', token });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to log in.', details: err.message });
+  }
+};
+
+// Get all employees
+exports.getAllEmployees = async (req, res) => {
+  try {
+    const employees = await Employee.find({}, '-password');
+    res.status(200).json(employees);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch employees.', details: err.message });
+  }
+};
+
+// Get an employee by ID
+exports.getEmployeeById = async (req, res) => {
+  try {
+    const employeeId = req.params.id;
+
+    if (!isValidObjectId(employeeId)) {
+      return res.status(400).json({ error: 'Invalid employee ID.' });
+    }
+
+    const employee = await Employee.findById(employeeId, '-password');
+
     if (!employee) {
-      return res.status(404).json({ message: 'Employee not found' });
+      return res.status(404).json({ error: 'Employee not found.' });
     }
-    const isPasswordCorrect = await bcrypt.compare(password, employee.password);
-    if (!isPasswordCorrect) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-    const token = jwt.sign({ userId: employee._id, isOrganizer: false }, process.env.SECRET_KEY, { expiresIn: '1h' });
-    return res.status(200).json({ token });
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
+
+    res.status(200).json(employee);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch employee.', details: err.message });
   }
 };
 
-// API to register a new organizer
-const registerOrganizer = async (req, res) => {
-  const { username, password, email } = req.body;
+// Register an employee for a hackathon
+exports.registerForHackathon = async (req, res) => {
   try {
-    const existingOrganizer = await Organizer.findOne({ email });
-    if (existingOrganizer) {
-      return res.status(400).json({ message: 'Organizer with this email already exists.' });
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const organizer = await Organizer.create({ username, email, password: hashedPassword });
-    const token = jwt.sign({ userId: organizer._id, isOrganizer: true }, process.env.SECRET_KEY, { expiresIn: '1h' });
-    return res.status(201).json({ token });
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
+    const { employeeId, hackathonId } = req.body;
 
-// API for organizer login
-const loginOrganizer = async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const organizer = await Organizer.findOne({ email });
-    if (!organizer) {
-      return res.status(404).json({ message: 'Organizer not found' });
-    }
-    const isPasswordCorrect = await bcrypt.compare(password, organizer.password);
-    if (!isPasswordCorrect) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-    const token = jwt.sign({ userId: organizer._id, isOrganizer: true }, process.env.SECRET_KEY, { expiresIn: '1h' });
-    return res.status(200).json({ token });
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-// API to allow employee participation in a hackathon
-const participateInHackathon = async (req, res) => {
-  const { employeeId, hackathonId } = req.params;
-  try {
-    // Verify the JWT token and get the authenticated user (employee)
-    const user = req.user;
-    if (!user) {
-      return res.status(401).json({ message: 'Unauthorized' });
-    }
-
-    // Check if the user is authorized to participate in hackathons (employee role)
-    if (!user.isOrganizer) {
-      return res.status(403).json({ message: 'Unauthorized. Only employees can participate in hackathons.' });
-    }
-
-    const employee = await Employee.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({ message: 'Employee not found' });
-    }
-    if (employee.hackathons.includes(hackathonId)) {
-      return res.status(409).json({ message: 'Employee is already registered for this hackathon' });
-    }
-
+    // Check if the hackathon exists
     const hackathon = await Hackathon.findById(hackathonId);
     if (!hackathon) {
-      return res.status(404).json({ message: 'Hackathon not found' });
+      return res.status(404).json({ error: 'Hackathon not found.' });
     }
 
-    // Check if the hackathon slots are full
-    if (hackathon.participants.length >= hackathon.slots) {
-      return res.status(400).json({ message: 'Hackathon slots are full' });
+    // Check if the hackathon registration is open
+    if (!hackathon.registrationOpen) {
+      return res.status(400).json({ error: 'Hackathon registration is closed.' });
     }
 
-    // Check if the registration date has passed
-    if (new Date() > hackathon.registrationDate) {
-      return res.status(400).json({ message: 'Registration date has passed' });
+    // Check if the employee is already registered for the hackathon
+    if (hackathon.participants.includes(employeeId)) {
+      return res.status(400).json({ error: 'Employee is already registered for the hackathon.' });
     }
 
-    // Check if the employee satisfies the minimum requirements
-    if (!employeeMeetsRequirements(employee, hackathon.minimumRequirements)) {
-      return res.status(400).json({ message: 'Employee does not meet the minimum requirements' });
-    }
+    // Add the employee to the hackathon participants
+    hackathon.participants.push(employeeId);
+    await hackathon.save();
 
-    employee.hackathons.push(hackathonId);
-    await employee.save();
-    return res.status(200).json({ message: 'Successfully registered for the hackathon' });
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
+    res.status(200).json({ message: 'Employee registered for the hackathon successfully!' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to register for the hackathon.', details: err.message });
   }
 };
 
-// API to list all hackathons participated by an employee
-const listParticipatedHackathons = async (req, res) => {
-  const { employeeId } = req.params;
+// Get all hackathons in which an employee is registered
+exports.getRegisteredHackathons = async (req, res) => {
   try {
-    // Verify the JWT token and get the authenticated user (employee)
-    const user = req.user;
-    if (!user) {
-      return res.status(401).json({ message: 'Unauthorized' });
+    const employeeId = req.params.id;
+
+    if (!isValidObjectId(employeeId)) {
+      return res.status(400).json({ error: 'Invalid employee ID.' });
     }
 
-    // Check if the user is authorized to view participated hackathons (employee role)
-    if (!user.isOrganizer && user.userId !== employeeId) {
-      return res.status(403).json({ message: 'Unauthorized. You can only view your own participated hackathons.' });
+    const hackathons = await Hackathon.find({ participants: employeeId });
+
+    res.status(200).json(hackathons);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch hackathons.', details: err.message });
+  }
+};
+
+// Update employee details
+exports.updateEmployee = async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const employeeId = req.params.id;
+
+    if (!isValidObjectId(employeeId)) {
+      return res.status(400).json({ error: 'Invalid employee ID.' });
     }
 
-    const employee = await Employee.findById(employeeId).populate('hackathons');
+    const employee = await Employee.findByIdAndUpdate(employeeId, { name, email }, { new: true });
+
     if (!employee) {
-      return res.status(404).json({ message: 'Employee not found' });
+      return res.status(404).json({ error: 'Employee not found.' });
     }
-    return res.status(200).json(employee.hackathons);
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
+
+    res.status(200).json({ message: 'Employee details updated successfully!', employee });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update employee details.', details: err.message });
   }
 };
 
-// Helper function to check if the employee meets the minimum requirements of the hackathon
-const employeeMeetsRequirements = (employee, minimumRequirements) => {
-  // Implement your logic to check if the employee meets the minimum requirements
-  // Example: Check if the employee's experience level and technology stack match the hackathon's requirements
+// Delete an employee
+exports.deleteEmployee = async (req, res) => {
+  try {
+    const employeeId = req.params.id;
 
-  const employeeExperienceLevel = employee.experienceLevel;
-  const employeeTechnologyStack = employee.technologyStack;
+    if (!isValidObjectId(employeeId)) {
+      return res.status(400).json({ error: 'Invalid employee ID.' });
+    }
 
-  const hackathonExperienceLevelRequired = minimumRequirements.experienceLevel;
-  const hackathonTechnologyStackRequired = minimumRequirements.technologyStack;
+    const employee = await Employee.findByIdAndDelete(employeeId);
 
-  // Check if the employee's experience level is greater than or equal to the required level
-  if (employeeExperienceLevel !== hackathonExperienceLevelRequired) {
-    return false;
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    res.status(200).json({ message: 'Employee deleted successfully!', employee });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete employee.', details: err.message });
   }
-
-  // Check if the employee's technology stack matches the required stack
-  if (!employeeTechnologyStack.includes(hackathonTechnologyStackRequired)) {
-    return false;
-  }
-
-  // If the employee meets all the requirements, return true
-  return true;
 };
-
-module.exports = {
-  registerEmployee,
-  loginEmployee,
-  registerOrganizer,
-  loginOrganizer,
-  participateInHackathon,
-  listParticipatedHackathons,
-  employeeMeetsRequirements
-};
-
-
-// 3 5 API to allow employee participation in a hackathon
-// const participateInHackathon = async (req, res) => {
-//     const { employeeId, hackathonId } = req.params;
-//     try {
-//       const employee = await Employee.findById(employeeId);
-//       if (!employee) {
-//         return res.status(404).json({ message: 'Employee not found' });
-//       }
-//       if (employee.hackathons.includes(hackathonId)) {
-//         return res.status(409).json({ message: 'Employee is already registered for this hackathon' });
-//       }
-  
-//       const hackathon = await Hackathon.findById(hackathonId);
-//       if (!hackathon) {
-//         return res.status(404).json({ message: 'Hackathon not found' });
-//       }
-  
-//       // Check if the hackathon slots are full
-//       if (hackathon.participants.length >= hackathon.slots) {
-//         return res.status(400).json({ message: 'Hackathon slots are full' });
-//       }
-  
-//       // Check if the registration date has passed
-//       if (new Date() > hackathon.registrationDate) {
-//         return res.status(400).json({ message: 'Registration date has passed' });
-//       }
-  
-//       // Check if the employee satisfies the minimum requirements set by the organizer
-//       if (
-//         hackathon.minimumRequirements &&
-//         (!employee.experienceLevel ||
-//           !employee.technologyStack ||
-//           !employee.businessUnit ||
-//           employee.experienceLevel < hackathon.minimumRequirements.experienceLevel ||
-//           !hackathon.technologyStack.includes(employee.technologyStack) ||
-//           !hackathon.businessUnits.includes(employee.businessUnit))
-//       ) {
-//         return res.status(403).json({ message: 'Employee does not satisfy minimum requirements' });
-//       }
-  
-//       employee.hackathons.push(hackathonId);
-//       await employee.save();
-//       return res.status(200).json({ message: 'Successfully registered for the hackathon' });
-//     } catch (error) {
-//       return res.status(500).json({ message: 'Internal server error' });
-//     }
-//   };

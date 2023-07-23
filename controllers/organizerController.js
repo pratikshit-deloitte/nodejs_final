@@ -1,141 +1,98 @@
 const Organizer = require('../models/organizerModel');
 const Hackathon = require('../models/hackathonModel');
+const jwt = require('jsonwebtoken');
+const { SECRET_KEY } = require('../config');
 
-// API to host a new Hackathon
-const hostHackathon = async (req, res) => {
-  const { name, description, startDate, endDate, registrationDate, slots, technologyStack, businessUnits, minimumRequirements } = req.body;
-  const organizerId = req.user.userId; // Organizer's user ID extracted from the JWT token
-
+// Create a new organizer
+exports.createOrganizer = async (req, res) => {
   try {
-    // Check if the organizer exists
-    const organizer = await Organizer.findById(organizerId);
-    if (!organizer) {
-      return res.status(404).json({ message: 'Organizer not found' });
-    }
-
-    // Create a new Hackathon
-    const hackathon = await Hackathon.create({
-      name,
-      description,
-      startDate,
-      endDate,
-      registrationDate,
-      slots,
-      technologyStack,
-      businessUnits,
-      minimumRequirements,
-      organizer: organizerId,
-    });
-
-    return res.status(201).json({ message: 'Hackathon hosted successfully', hackathon });
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
+    const { name, email, password } = req.body;
+    const organizer = new Organizer({ name, email, password });
+    await organizer.save();
+    res.status(201).json({ message: 'Organizer created successfully!', organizer });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create organizer.', details: err.message });
   }
 };
 
-// API to update an existing Hackathon
-const updateHackathon = async (req, res) => {
-  const { hackathonId } = req.params;
-  const organizerId = req.user.userId; // Organizer's user ID extracted from the JWT token
-  const updateData = req.body;
-
+// Organizer login and generate JWT token
+exports.login = async (req, res) => {
   try {
-    // Check if the organizer exists
-    const organizer = await Organizer.findById(organizerId);
-    if (!organizer) {
-      return res.status(404).json({ message: 'Organizer not found' });
+    const { email, password } = req.body;
+    const organizer = await Organizer.findOne({ email });
+
+    if (!organizer || organizer.password !== password) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    // Find the Hackathon by ID and verify if it's hosted by the organizer
-    const hackathon = await Hackathon.findOne({ _id: hackathonId, organizer: organizerId });
-    if (!hackathon) {
-      return res.status(404).json({ message: 'Hackathon not found or you are not the organizer' });
-    }
+    // Generate JWT token
+    const token = jwt.sign({ id: organizer._id, email: organizer.email }, SECRET_KEY, { expiresIn: '1h' });
 
-    // Update the Hackathon with the provided data
-    await Hackathon.updateOne({ _id: hackathonId }, updateData);
-
-    return res.status(200).json({ message: 'Hackathon updated successfully' });
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
+    res.status(200).json({ message: 'Login successful!', token });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to log in.', details: err.message });
   }
 };
 
-// API to delete a Hackathon
-const deleteHackathon = async (req, res) => {
-  const { hackathonId } = req.params;
-  const organizerId = req.user.userId; // Organizer's user ID extracted from the JWT token
-
+// Get all organizers
+exports.getAllOrganizers = async (req, res) => {
   try {
-    // Check if the organizer exists
-    const organizer = await Organizer.findById(organizerId);
-    if (!organizer) {
-      return res.status(404).json({ message: 'Organizer not found' });
-    }
-
-    // Find the Hackathon by ID and verify if it's hosted by the organizer
-    const hackathon = await Hackathon.findOne({ _id: hackathonId, organizer: organizerId });
-    if (!hackathon) {
-      return res.status(404).json({ message: 'Hackathon not found or you are not the organizer' });
-    }
-
-    // Delete the Hackathon
-    await Hackathon.deleteOne({ _id: hackathonId });
-
-    return res.status(200).json({ message: 'Hackathon deleted successfully' });
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
+    const organizers = await Organizer.find();
+    res.status(200).json(organizers);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch organizers.', details: err.message });
   }
 };
 
-// API to list all hosted Hackathons by the Organizer
-const listHostedHackathons = async (req, res) => {
-  const organizerId = req.user.userId; // Organizer's user ID extracted from the JWT token
-
+// Get an organizer by ID
+exports.getOrganizerById = async (req, res) => {
   try {
-    // Check if the organizer exists
-    const organizer = await Organizer.findById(organizerId);
+    const organizer = await Organizer.findById(req.params.id);
     if (!organizer) {
-      return res.status(404).json({ message: 'Organizer not found' });
+      return res.status(404).json({ error: 'Organizer not found.' });
     }
-
-    // Find all Hackathons hosted by the organizer
-    const hostedHackathons = await Hackathon.find({ organizer: organizerId });
-
-    return res.status(200).json(hostedHackathons);
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
+    res.status(200).json(organizer);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch organizer.', details: err.message });
   }
 };
 
-// API to list all participants of a Hackathon hosted by the Organizer
-const listParticipants = async (req, res) => {
-  const { hackathonId } = req.params;
-  const organizerId = req.user.userId; // Organizer's user ID extracted from the JWT token
-
+// Update organizer details
+exports.updateOrganizer = async (req, res) => {
   try {
-    // Check if the organizer exists
-    const organizer = await Organizer.findById(organizerId);
+    const { name, email } = req.body;
+    const organizerId = req.params.id;
+    const organizer = await Organizer.findByIdAndUpdate(organizerId, { name, email }, { new: true });
     if (!organizer) {
-      return res.status(404).json({ message: 'Organizer not found' });
+      return res.status(404).json({ error: 'Organizer not found.' });
     }
-
-    // Find the Hackathon by ID and verify if it's hosted by the organizer
-    const hackathon = await Hackathon.findOne({ _id: hackathonId, organizer: organizerId }).populate('participants');
-    if (!hackathon) {
-      return res.status(404).json({ message: 'Hackathon not found or you are not the organizer' });
-    }
-
-    return res.status(200).json(hackathon.participants);
-  } catch (error) {
-    return res.status(500).json({ message: 'Internal server error' });
+    res.status(200).json({ message: 'Organizer details updated successfully!', organizer });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update organizer details.', details: err.message });
   }
 };
 
-module.exports = {
-  hostHackathon,
-  updateHackathon,
-  deleteHackathon,
-  listHostedHackathons,
-  listParticipants,
+// Delete an organizer
+exports.deleteOrganizer = async (req, res) => {
+  try {
+    const organizerId = req.params.id;
+    const organizer = await Organizer.findByIdAndDelete(organizerId);
+    if (!organizer) {
+      return res.status(404).json({ error: 'Organizer not found.' });
+    }
+    res.status(200).json({ message: 'Organizer deleted successfully!', organizer });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete organizer.', details: err.message });
+  }
+};
+
+// Get all hackathons hosted by an organizer
+exports.getHackathonsByOrganizer = async (req, res) => {
+  try {
+    const organizerId = req.params.id;
+    const hackathons = await Hackathon.find({ organizer: organizerId });
+    res.status(200).json(hackathons);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch hackathons.', details: err.message });
+  }
 };

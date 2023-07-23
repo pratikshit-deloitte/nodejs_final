@@ -1,46 +1,47 @@
-// app.js
-
 const express = require('express');
 const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
 const morgan = require('morgan');
 const cors = require('cors');
 
-// Load environment variables
-require('dotenv').config();
+// Import route handlers
+const organizerRoutes = require('./routes/organizerRoutes');
+const employeeRoutes = require('./routes/employeeRoutes');
+const hackathonRoutes = require('./routes/hackathonRoutes');
 
+// Import auth middleware
+const { authenticateUser } = require('./middleware/authMiddleware');
+
+// Set up Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middlewares
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+// Middleware
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+app.use(cors());
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
+const { MONGODB_URI } = require('./config'); // Import MongoDB connection URI from config.js
+mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((error) => console.error('Error connecting to MongoDB:', error));
+.then(() => console.log('Connected to MongoDB'))
+.catch(err => console.error('Error connecting to MongoDB:', err));
 
 // Routes
-const employeeRoutes = require('./routes/employee');
-const organizerRoutes = require('./routes/organizer');
-const hackathonRoutes = require('./routes/hackathon');
-
-app.use('/api/employees', employeeRoutes);
 app.use('/api/organizers', organizerRoutes);
+app.use('/api/employees', employeeRoutes);
 app.use('/api/hackathons', hackathonRoutes);
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err.message);
-  res.status(err.status || 500).json({ message: err.message });
+// Default route
+app.get('/', (req, res) => {
+  res.send('Welcome to Hash-A-Thon application.');
 });
 
 // Start the server
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server started on http://localhost:${PORT}`);
 });
