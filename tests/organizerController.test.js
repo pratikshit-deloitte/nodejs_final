@@ -1,5 +1,3 @@
-// tests/organizerController.test.js
-
 const request = require('supertest');
 const app = require('../app');
 const mongoose = require('mongoose');
@@ -321,6 +319,6 @@ describe('Organizer Controller', () => {
       expect(response.body).toHaveProperty('message', 'Organizer not found');
     });
 
-    // Add more test cases for other scenarios if needed
+
   });
 });

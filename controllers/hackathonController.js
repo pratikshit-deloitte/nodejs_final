@@ -1,5 +1,3 @@
-// controllers/hackathonController.js
-
 const Hackathon = require('../models/hackathonModel');
 const Employee = require('../models/employeeModel');
 

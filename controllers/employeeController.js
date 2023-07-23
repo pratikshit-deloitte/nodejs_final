@@ -1,5 +1,3 @@
-// controllers/employeeController.js
-
 const { Employee, Organizer } = require('../models/employeeModel');
 const Hackathon = require('../models/hackathonModel');
 const jwt = require('jsonwebtoken');

@@ -1,5 +1,3 @@
-// models/organizerModel.js
-
 const mongoose = require('mongoose');
 
 const organizerSchema = new mongoose.Schema({

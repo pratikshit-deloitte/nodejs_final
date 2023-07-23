@@ -1,5 +1,3 @@
-// controllers/organizerController.js
-
 const Organizer = require('../models/organizerModel');
 const Hackathon = require('../models/hackathonModel');
 

@@ -1,5 +1,3 @@
-// models/hackathonModel.js
-
 const mongoose = require("mongoose");
 
 const hackathonSchema = new mongoose.Schema({

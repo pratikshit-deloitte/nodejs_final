@@ -1,4 +1,3 @@
-// tests/hackathonController.test.js
 
 const request = require('supertest');
 const app = require('../app');
@@ -229,6 +228,6 @@ describe('Hackathon Controller', () => {
       expect(response.body).toHaveProperty('message', 'Hackathon not found');
     });
 
-    // Add more test cases for different scenarios if needed
+
   });
 });
